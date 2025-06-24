@@ -65,27 +65,46 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Fix: Always convert MySQL rows to dicts before using .get() ---
+# --- Fix: Always convert DB rows to dicts in all loops ---
 def row_to_dict(row):
-    return {k: row[k] for k in row.keys()}
+    """Convert database row to dictionary, handling different row types."""
+    if row is None:
+        return {}
+    if hasattr(row, '_asdict'):
+        return row._asdict()
+    if hasattr(row, 'keys'):
+        return {k: row[k] for k in row.keys()}
+    return {}
 
-@st.cache_data
 def get_filter_data():
     """Caches the filter bounds (years, genres, etc.) to prevent re-querying."""
-    return database.get_movie_filter_bounds()
+    try:
+        return database.get_movie_filter_bounds()
+    except Exception as e:
+        st.error(f"Error fetching filter data: {e}")
+        # Return default filter bounds
+        return {
+            'min_year': 1900,
+            'max_year': 2024,
+            'genres': [],
+            'languages': []
+        }
 
-@st.cache_data
 def load_and_build_model():
     """
     Loads all movies from the database and builds the recommendation model.
     The cache ensures this runs only when the underlying data changes.
     """
-    movies_list = database.get_all_movies()
-    if not movies_list:
+    try:
+        movies_list = database.get_all_movies()
+        if not movies_list:
+            return None, None
+        movies_df = pd.DataFrame(movies_list)
+        recommender.build_recommendation_model(movies_df)
+        return movies_df
+    except Exception as e:
+        st.error(f"Error loading recommendation model: {e}")
         return None, None
-    movies_df = pd.DataFrame(movies_list)
-    recommender.build_recommendation_model(movies_df)
-    return movies_df
 
 # --- Fix: Always convert DB rows to dicts in all loops ---
 def get_suggestions(search_term):
