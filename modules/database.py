@@ -252,9 +252,11 @@ def add_user(username, email, password_hash, phone=None, is_admin=False):
     conn = get_conn()
     cursor = get_cursor(conn)
     try:
+        # Use role column instead of is_admin column
+        role = 'admin' if is_admin else 'user'
         cursor.execute(
-            "INSERT INTO users (username, email, password_hash, phone_number, is_admin) VALUES (%s, %s, %s, %s, %s)",
-            (username, email, password_hash, phone, is_admin)
+            "INSERT INTO users (username, email, password_hash, phone_number, role) VALUES (%s, %s, %s, %s, %s)",
+            (username, email, password_hash, phone, role)
         )
         conn.commit()
         return True
@@ -912,8 +914,13 @@ def update_last_login(user_id):
     conn = get_conn()
     cursor = get_cursor(conn)
     try:
-        cursor.execute("UPDATE users SET last_login=NOW() WHERE id = %s", (user_id,))
-        conn.commit()
+        # Check if last_login column exists before trying to update it
+        cursor.execute("SHOW COLUMNS FROM users LIKE 'last_login'")
+        if cursor.fetchone():
+            cursor.execute("UPDATE users SET last_login=NOW() WHERE id = %s", (user_id,))
+            conn.commit()
+        else:
+            print("[AUTH_DEBUG] last_login column does not exist in users table")
     except Exception as e:
         print(f"[AUTH_DEBUG] Failed to update last_login: {e}")
     finally:
@@ -932,8 +939,8 @@ def authenticate_user(username_or_email, password):
     # Check if the input is likely an email address
     is_email = re.match(r"[^@]+@[^@]+\.[^@]+", username_or_email)
     
-    # Fetch all relevant user fields
-    user_fields = "id, username, email, full_name, date_joined, last_login, profile_pic, bio, favorite_genres, is_admin, role, password_hash, is_verified"
+    # Fetch only the columns that actually exist in the users table
+    user_fields = "id, username, email, phone_number, password_hash, role, is_verified, created_at"
     if is_email:
         query = f"SELECT {user_fields} FROM users WHERE email = %s"
     else:
