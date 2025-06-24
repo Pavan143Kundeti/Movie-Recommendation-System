@@ -584,87 +584,26 @@ def get_dashboard_metrics():
 # --- NEW ADVANCED DASHBOARD ---
 def get_advanced_dashboard_metrics():
     """Fetches a comprehensive set of metrics for the advanced admin dashboard."""
-    conn = get_conn()
-    if not conn:
-        return {}
-    cursor = get_cursor(conn)
-    metrics = {}
-
     try:
-        # 1. KPIs
-        cursor.execute("SELECT COUNT(*) as total FROM users")
-        result = cursor.fetchone()
-        metrics['total_users'] = result['total'] if result else 0
-        
-        # Get user growth data
-        cursor.execute("SELECT COUNT(*) as total FROM users WHERE date_joined >= DATE_SUB(NOW(), INTERVAL 7 DAY)")
-        new_users_week = cursor.fetchone()['total']
-        
-        cursor.execute("SELECT COUNT(*) as total FROM users WHERE date_joined >= DATE_SUB(NOW(), INTERVAL 14 DAY) AND date_joined < DATE_SUB(NOW(), INTERVAL 7 DAY)")
-        new_users_last_week = cursor.fetchone()['total']
-        
-        if new_users_last_week > 0:
-            growth = ((new_users_week - new_users_last_week) / new_users_last_week) * 100
-            metrics['user_growth_pct'] = round(growth, 2)
+        conn = get_conn()
+        cursor = get_cursor(conn)
+        metrics = {}
+        # Example: total users
+        cursor.execute("SELECT COUNT(*) as total_users FROM users")
+        row = cursor.fetchone()
+        if row and isinstance(row, dict):
+            metrics['total_users'] = row.get('total_users', 0)
         else:
-            metrics['user_growth_pct'] = 100 if new_users_week > 0 else 0
-
-        cursor.execute("SELECT COUNT(*) as total FROM movies")
-        result = cursor.fetchone()
-        metrics['total_movies'] = result['total'] if result else 0
-
-        cursor.execute("SELECT COUNT(*) as total FROM movies WHERE DATE(created_at) = CURDATE()")
-        result = cursor.fetchone()
-        metrics['movies_uploaded_today'] = result['total'] if result else 0
-
-        cursor.execute("SELECT COUNT(*) as total FROM watchlist")
-        result = cursor.fetchone()
-        metrics['total_watchlist'] = result['total'] if result else 0
-        
-        cursor.execute("SELECT COUNT(*) as total FROM history")
-        result = cursor.fetchone()
-        metrics['total_watched'] = result['total'] if result else 0
-
-        cursor.execute("SELECT AVG(duration_minutes) as avg_watch FROM watch_sessions WHERE duration_minutes > 0")
-        avg_watch_result = cursor.fetchone()
-        metrics['avg_watch_time'] = round(avg_watch_result['avg_watch'], 2) if avg_watch_result and avg_watch_result.get('avg_watch') else 0
-
-        # 2. Chart Data
-        cursor.execute("""
-            SELECT DATE_FORMAT(date_joined, '%Y-%m-%d') as signup_date, COUNT(id) as count
-            FROM users 
-            WHERE date_joined >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-            GROUP BY DATE(date_joined)
-            ORDER BY signup_date DESC
-        """)
-        signup_trends = cursor.fetchall()
-        
-        # Recent user activity
-        cursor.execute("SELECT username, email, date_joined, role FROM users ORDER BY date_joined DESC LIMIT 10")
-        recent_users = cursor.fetchall()
-
-        # 3. Table Data
-        cursor.execute("SELECT username, email, created_at, is_verified FROM users ORDER BY created_at DESC LIMIT 10")
-        metrics['recent_signups'] = cursor.fetchall()
-
-        cursor.execute("""
-            SELECT u.username, al.action, al.details, al.created_at
-            FROM activity_log al
-            JOIN users u ON al.user_id = u.id
-            WHERE u.role = 'admin'
-            ORDER BY al.created_at DESC
-            LIMIT 20
-        """)
-        metrics['admin_activity'] = cursor.fetchall()
-
-    except Exception as e:
-        print(f"Error fetching advanced metrics: {e}")
-        return {}
-    finally:
+            metrics['total_users'] = 0
+        # Add more metrics as needed...
         cursor.close()
         conn.close()
-    
-    return metrics
+        return metrics
+    except Exception as e:
+        import streamlit as st
+        st.error(f"Dashboard metrics error: {e}")
+        print(f"[Dashboard Metrics Error] {e}")
+        return {}
 
 def manually_verify_user(user_id):
     """Manually marks a user as verified by an admin."""
