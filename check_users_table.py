@@ -39,22 +39,20 @@ def check_users_table():
         for column in columns:
             print(f"  {column[0]} - {column[1]}")
         
-        # Get sample data
+        # Get sample data to see what's actually there
         cursor.execute("SELECT * FROM users LIMIT 1")
         sample_data = cursor.fetchone()
         
         if sample_data:
-            print("\nSample user data:")
-            cursor.execute("SHOW COLUMNS FROM users")
-            column_names = [col[0] for col in cursor.fetchall()]
-            for i, value in enumerate(sample_data):
-                print(f"  {column_names[i]}: {value}")
+            print(f"\nSample user data: {sample_data}")
         else:
             print("\nNo users found in table")
             
+        cursor.close()
+        conn.close()
+        
     except Exception as e:
         print(f"Error checking users table: {e}")
-    finally:
         cursor.close()
         conn.close()
 

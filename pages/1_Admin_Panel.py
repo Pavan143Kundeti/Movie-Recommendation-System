@@ -234,13 +234,25 @@ def render_dashboard():
 
 def render_user_management():
     st.header("👥 User Management")
+    
     all_users = get_cached_users()
     if not all_users:
-        st.warning("No users found.")
+        st.warning("No users found in the database.")
         return
 
+    # Create DataFrame and check available columns
     users_df = pd.DataFrame(all_users)
-    st.dataframe(users_df[['id', 'username', 'email', 'role', 'is_verified', 'date_joined']], use_container_width=True)
+    
+    # Show what columns are available
+    st.info(f"Available columns: {list(users_df.columns)}")
+
+    # Only display columns that exist
+    display_cols = [col for col in ['id', 'username', 'email', 'role', 'is_verified', 'date_joined'] if col in users_df.columns]
+    if display_cols:
+        st.dataframe(users_df[display_cols], use_container_width=True)
+    else:
+        st.dataframe(users_df, use_container_width=True)
+        st.warning("No expected columns found in user data!")
 
     st.divider()
     
