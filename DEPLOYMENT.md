@@ -448,6 +448,81 @@ For deployment issues:
 - **Analytics:** Watchlist and review analytics are available for each movie in both admin and user views.
 - **Robust UI:** Profile images and sidebar clock are robust and production-ready.
 
+## Streamlit Cloud Deployment Guide
+
+## Prerequisites
+
+1. **Database Setup**: Ensure your MySQL database is accessible from Streamlit Cloud
+2. **Secrets Configuration**: Configure your `.streamlit/secrets.toml` file with database credentials
+3. **Dependencies**: All required packages are listed in `requirements.txt`
+
+## Deployment Steps
+
+1. **Push to GitHub**: Ensure your code is in a GitHub repository
+2. **Connect to Streamlit Cloud**: 
+   - Go to [share.streamlit.io](https://share.streamlit.io)
+   - Connect your GitHub account
+   - Select your repository
+3. **Configure Secrets**: Add your database credentials in the Streamlit Cloud dashboard
+
+## Troubleshooting Common Issues
+
+### ModuleNotFoundError: mysql.connector
+
+**Solution**: The app now includes fallback database connectors:
+- Primary: `mysql-connector-python==8.0.33`
+- Fallback: `PyMySQL==1.1.0`
+
+If you encounter this error:
+1. Check that `requirements.txt` is in your repository root
+2. Verify the MySQL connector version is compatible
+3. The app will automatically fall back to PyMySQL if mysql.connector fails
+
+### Database Connection Issues
+
+**Common Causes**:
+- Database not accessible from Streamlit Cloud
+- Incorrect credentials in secrets
+- Database server blocking connections
+
+**Solutions**:
+1. Use a cloud database service (AWS RDS, Google Cloud SQL, etc.)
+2. Ensure database allows connections from Streamlit Cloud IPs
+3. Verify credentials in `.streamlit/secrets.toml`
+
+### Testing Database Connection
+
+Run the test script locally to verify database connectivity:
+```bash
+python test_connection.py
+```
+
+## Environment Variables
+
+Make sure these are set in your Streamlit Cloud deployment:
+- Database host, user, password, and database name
+- Email configuration for notifications
+- TMDB API key for movie data
+
+## Performance Tips
+
+1. **Database Connection Pooling**: The app uses connection pooling for better performance
+2. **Caching**: Streamlit caching is implemented for expensive operations
+3. **Pagination**: Large datasets are paginated to improve load times
+
+## Security Considerations
+
+1. **Database Credentials**: Never commit secrets to version control
+2. **API Keys**: Store sensitive keys in Streamlit secrets
+3. **User Authentication**: Implement proper user authentication and authorization
+
+## Support
+
+If you continue to experience issues:
+1. Check the Streamlit Cloud logs for detailed error messages
+2. Verify all dependencies are correctly specified
+3. Test the database connection locally first
+
 ---
 
 **🎬 Your Movie Recommendation System is now ready for production!** 

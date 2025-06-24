@@ -1,42 +1,36 @@
-import mysql.connector
+#!/usr/bin/env python3
+"""
+Test script to verify database connection works with fallback connectors
+"""
 
-def test_mysql_connection():
-    """Test MySQL connection and create database"""
+import sys
+import os
+
+# Add the current directory to Python path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from modules import database
+    print("✅ Successfully imported database module")
+    
+    # Test connection
     try:
-        # Try to connect without specifying database
-        print("Testing MySQL connection...")
-        connection = mysql.connector.connect(
-            host="localhost",
-            user="root",
-            password="Pavan@3048"
-        )
+        conn = database.get_conn()
+        print("✅ Database connection successful")
         
-        if connection.is_connected():
-            print("✅ Successfully connected to MySQL!")
-            
-            cursor = connection.cursor()
-            
-            # Create database
-            print("Creating database 'movie_db'...")
-            cursor.execute("CREATE DATABASE IF NOT EXISTS movie_db")
-            print("✅ Database 'movie_db' created/verified!")
-            
-            # Switch to the database
-            cursor.execute("USE movie_db")
-            print("✅ Switched to 'movie_db' database!")
-            
-            # Check if tables exist
-            cursor.execute("SHOW TABLES")
-            tables = cursor.fetchall()
-            print(f"✅ Found {len(tables)} tables in the database")
-            
-            cursor.close()
-            connection.close()
-            return True
-            
-    except mysql.connector.Error as err:
-        print(f"❌ Error: {err}")
-        return False
-
-if __name__ == "__main__":
-    test_mysql_connection() 
+        # Test a simple query
+        cursor = database.get_cursor(conn)
+        cursor.execute("SELECT 1 as test")
+        result = cursor.fetchone()
+        print(f"✅ Test query successful: {result}")
+        
+        cursor.close()
+        conn.close()
+        print("✅ Connection closed successfully")
+        
+    except Exception as e:
+        print(f"❌ Database connection failed: {e}")
+        
+except Exception as e:
+    print(f"❌ Failed to import database module: {e}")
+    print("This might be due to missing dependencies or configuration issues.") 

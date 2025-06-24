@@ -1,5 +1,17 @@
-import mysql.connector
-from mysql.connector import pooling
+try:
+    import mysql.connector
+    from mysql.connector import pooling
+    MYSQL_AVAILABLE = True
+except ImportError:
+    try:
+        import pymysql
+        import pymysql.cursors
+        MYSQL_AVAILABLE = False
+        PYMySQL_AVAILABLE = True
+    except ImportError:
+        MYSQL_AVAILABLE = False
+        PYMySQL_AVAILABLE = False
+
 import streamlit as st
 import hashlib
 import pandas as pd
@@ -19,10 +31,38 @@ DB_CONFIG = {
     'pool_size': 5
 }
 
-connection_pool = pooling.MySQLConnectionPool(**DB_CONFIG)
+# Initialize connection pool based on available connector
+if MYSQL_AVAILABLE:
+    connection_pool = pooling.MySQLConnectionPool(**DB_CONFIG)
+elif PYMySQL_AVAILABLE:
+    connection_pool = None  # PyMySQL doesn't have built-in pooling, we'll handle connections manually
+else:
+    connection_pool = None
+    st.error("No MySQL connector available. Please install mysql-connector-python or PyMySQL.")
 
 def get_conn():
-    return connection_pool.get_connection()
+    if MYSQL_AVAILABLE and connection_pool:
+        return connection_pool.get_connection()
+    elif PYMySQL_AVAILABLE:
+        return pymysql.connect(
+            host=DB_CONFIG['host'],
+            user=DB_CONFIG['user'],
+            password=DB_CONFIG['password'],
+            database=DB_CONFIG['database'],
+            charset='utf8mb4',
+            cursorclass=pymysql.cursors.DictCursor
+        )
+    else:
+        raise Exception("No database connector available")
+
+def get_cursor(conn):
+    """Get cursor with proper dictionary format for both connectors"""
+    if MYSQL_AVAILABLE:
+        return conn.cursor(dictionary=True)
+    elif PYMySQL_AVAILABLE:
+        return conn.cursor()
+    else:
+        raise Exception("No database connector available")
 
 # --- Table Creation (run once, or check/auto-create) ---
 CREATE_TABLES_SQL = [
@@ -93,7 +133,7 @@ def auto_migrate_users_table():
         'is_admin': "BOOLEAN NOT NULL DEFAULT FALSE"
     }
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute("SHOW COLUMNS FROM users")
         existing_columns = set(row[0] for row in cursor.fetchall())
@@ -114,7 +154,7 @@ def auto_migrate_users_table():
 def init_database():
     auto_migrate_users_table()
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
 
     # SQL commands to create tables
     commands = [
@@ -219,7 +259,7 @@ def init_database():
 # --- User Management Functions ---
 def add_user(username, email, password_hash, phone=None, is_admin=False):
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute(
             "INSERT INTO users (username, email, password_hash, phone_number, is_admin) VALUES (%s, %s, %s, %s, %s)",
@@ -236,7 +276,7 @@ def add_user(username, email, password_hash, phone=None, is_admin=False):
 
 def get_user_by_email(email):
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
     user = cursor.fetchone()
     cursor.close()
@@ -246,7 +286,7 @@ def get_user_by_email(email):
 def get_user_by_username(username):
     """Return user row by username, or None if not found."""
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     try:
         cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
         row = cursor.fetchone()
@@ -274,7 +314,7 @@ def create_tables():
     This function should be run once at the start of the application.
     """
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
 
     # SQL commands to create tables
     commands = [
@@ -381,7 +421,7 @@ def create_tables():
 def log_activity(user_id, action, details=""):
     """Logs user activity to the activity_log table."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     
     try:
         cursor.execute(
@@ -400,7 +440,7 @@ def log_activity(user_id, action, details=""):
 def get_user_activity(user_id, limit=5):
     """Retrieves recent activity for a user."""
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     
     try:
         cursor.execute("""
@@ -423,7 +463,7 @@ def get_user_activity(user_id, limit=5):
 def get_dashboard_metrics():
     """Fetches various metrics for the admin dashboard."""
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     metrics = {
         'total_users': 0,
         'total_movies': 0,
@@ -491,7 +531,7 @@ def get_advanced_dashboard_metrics():
     conn = get_conn()
     if not conn:
         return {}
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     metrics = {}
 
     try:
@@ -582,7 +622,7 @@ def get_advanced_dashboard_metrics():
 def manually_verify_user(user_id):
     """Manually marks a user as verified by an admin."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute("UPDATE users SET is_verified = 1 WHERE id = %s", (user_id,))
         conn.commit()
@@ -597,7 +637,7 @@ def manually_verify_user(user_id):
 def reset_user_password_by_admin(user_id, new_password):
     """Resets a user's password by an admin."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         hashed_password = hashlib.sha256(new_password.encode()).hexdigest()
         cursor.execute("UPDATE users SET password_hash = %s WHERE id = %s", (hashed_password, user_id))
@@ -615,7 +655,7 @@ def reset_user_password_by_admin(user_id, new_password):
 def get_movie_suggestions(query, limit=10):
     """Gets movie title suggestions for autocomplete."""
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     
     try:
         cursor.execute("""
@@ -641,7 +681,7 @@ def bulk_upload_movies(csv_data, uploaded_by):
     This function is more robust, validates data, and uses executemany for efficiency.
     """
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     
     # List to hold movie data tuples for insertion
     movies_to_insert = []
@@ -734,7 +774,7 @@ def bulk_upload_movies(csv_data, uploaded_by):
 def get_movie_filter_bounds():
     """Gets the min/max year and distinct genres/languages for filter widgets."""
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     bounds = {
         'min_year': 1900,
         'max_year': datetime.now().year,
@@ -776,7 +816,7 @@ def get_movies_paginated(page=1, per_page=12, query=None, movie_type=None, genre
     Gets movies with pagination and advanced filtering.
     """
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     params = []
     
     # Base query now includes a LEFT JOIN to calculate average rating
@@ -879,7 +919,7 @@ def get_movies_paginated(page=1, per_page=12, query=None, movie_type=None, genre
 def update_last_login(user_id):
     """Update the last_login field for a user to the current timestamp."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute("UPDATE users SET last_login=NOW() WHERE id = %s", (user_id,))
         conn.commit()
@@ -896,7 +936,7 @@ def authenticate_user(username_or_email, password):
     print(f"[AUTH_DEBUG] Hashed input password to: {password_hash}")
 
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     
     # Check if the input is likely an email address
     is_email = re.match(r"[^@]+@[^@]+\.[^@]+", username_or_email)
@@ -935,7 +975,7 @@ def authenticate_user(username_or_email, password):
 def get_all_users():
     """Retrieves all users from the database."""
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     try:
         cursor.execute("SELECT id, username, email, role, is_verified, created_at FROM users ORDER BY id ASC")
         users = cursor.fetchall()
@@ -957,7 +997,7 @@ def delete_user(user_id, admin_id):
         return False
         
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     
     try:
         # Start a transaction
@@ -1005,7 +1045,7 @@ def delete_user(user_id, admin_id):
 def add_movie(title, item_type, genre, release_year, description, cast, poster_url, trailer_url, audio_languages, uploaded_by):
     """Adds a new movie or series to the database, including audio languages."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute(
             """
@@ -1032,7 +1072,7 @@ def add_movie(title, item_type, genre, release_year, description, cast, poster_u
 def get_all_movies():
     """Retrieves all movies from the database for the admin panel."""
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     try:
         # Now selecting all fields required by the recommender system
         cursor.execute("SELECT id, title, type, genre, release_year, description, cast, poster_url FROM movies ORDER BY id DESC")
@@ -1050,7 +1090,7 @@ def search_movies(query, genre=None, language=None, year=None, limit=50):
     Searches movies based on a query string and optional filters.
     """
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     
     sql = "SELECT * FROM movies WHERE 1=1"
     params = []
@@ -1087,7 +1127,7 @@ def search_movies(query, genre=None, language=None, year=None, limit=50):
 def add_to_watchlist(user_id, movie_id):
     """Add movie to user's watchlist"""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     
     try:
         cursor.execute(
@@ -1109,7 +1149,7 @@ def add_to_watchlist(user_id, movie_id):
 def remove_from_watchlist(user_id, movie_id):
     """Remove movie from user's watchlist"""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     
     try:
         cursor.execute(
@@ -1131,7 +1171,7 @@ def remove_from_watchlist(user_id, movie_id):
 def get_watchlist(user_id):
     """Get user's watchlist"""
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     
     cursor.execute("""
         SELECT m.* FROM movies m
@@ -1148,7 +1188,7 @@ def get_watchlist(user_id):
 def add_to_history(user_id, movie_id, status='watched'):
     """Add movie to user's history"""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     
     try:
         cursor.execute("""
@@ -1169,7 +1209,7 @@ def add_to_history(user_id, movie_id, status='watched'):
 def get_history(user_id):
     """Get user's watch history"""
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     
     cursor.execute("""
         SELECT m.*, h.status, h.watched_at FROM movies m
@@ -1187,7 +1227,7 @@ def is_in_watchlist(user_id, movie_id):
     """Checks if a movie is already in the user's watchlist."""
     conn = get_conn()
     if conn is None: return False
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute("SELECT 1 FROM watchlist WHERE user_id = %s AND movie_id = %s", (user_id, movie_id))
         return cursor.fetchone() is not None
@@ -1201,7 +1241,7 @@ def is_in_watchlist(user_id, movie_id):
 def create_otp_table():
     """Create OTP table for email verification and password reset."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS otps (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1225,7 +1265,7 @@ def generate_otp(length=6):
 def store_otp(email, otp_code, purpose, expiry_minutes=5):
     """Store OTP in the database with expiry."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     expires_at = datetime.now() + timedelta(minutes=expiry_minutes)
     cursor.execute(
         "INSERT INTO otps (email, otp_code, purpose, expires_at) VALUES (%s, %s, %s, %s)",
@@ -1238,7 +1278,7 @@ def store_otp(email, otp_code, purpose, expiry_minutes=5):
 def validate_otp(email, otp_code, purpose):
     """Validate OTP for email and purpose. Returns True if valid and not expired."""
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     cursor.execute(
         "SELECT * FROM otps WHERE email=%s AND otp_code=%s AND purpose=%s AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1",
         (email, otp_code, purpose)
@@ -1262,7 +1302,7 @@ def resend_otp(email, purpose='signup'):
 def delete_otps(email, purpose):
     """Delete all OTPs for an email and purpose (cleanup after use)."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     cursor.execute(
         "DELETE FROM otps WHERE email=%s AND purpose=%s",
         (email, purpose)
@@ -1284,7 +1324,7 @@ def get_user_stats(user_id):
     }
     
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     
     try:
         # 1. Get member since
@@ -1335,7 +1375,7 @@ def get_rating_summary(movie_id):
     Calculates the average rating and review count for a given movie.
     """
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     try:
         cursor.execute(
             """
@@ -1360,7 +1400,7 @@ def get_reviews_for_movie(movie_id, limit=5):
     Retrieves all reviews for a specific movie, including the username of the reviewer.
     """
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     try:
         cursor.execute(
             """
@@ -1386,7 +1426,7 @@ def add_or_update_review(movie_id, user_id, rating, review):
     Adds a new review or updates an existing one for a user and movie.
     """
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute(
             """
@@ -1469,7 +1509,7 @@ def populate_from_tmdb_files(movies_df, credits_df, uploaded_by_id):
 def set_user_verified(email):
     """Sets a user's is_verified status to TRUE."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute("UPDATE users SET is_verified = TRUE WHERE email = %s", (email,))
         conn.commit()
@@ -1490,7 +1530,7 @@ def set_user_verified(email):
 def update_user_profile(user_id, username, email, phone_number):
     """Updates a user's profile information (username, email, phone number)."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute(
             "UPDATE users SET username = %s, email = %s, phone_number = %s WHERE id = %s",
@@ -1512,7 +1552,7 @@ def update_user_profile(user_id, username, email, phone_number):
 def change_password(user_id, old_password, new_password):
     """Changes a user's password after verifying the old one."""
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     
     # First, get the current password hash to verify the old password
     try:
@@ -1545,7 +1585,7 @@ def change_password(user_id, old_password, new_password):
 def start_watch_session(user_id, movie_id):
     """Starts a new watch session for a user and movie."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         # Use NOW() to get the current timestamp from the database server
         cursor.execute(
@@ -1565,7 +1605,7 @@ def start_watch_session(user_id, movie_id):
 def end_watch_session(session_id):
     """Ends a watch session and calculates the duration."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         # Update the row, calculate duration in minutes using TIMESTAMPDIFF
         cursor.execute(
@@ -1594,7 +1634,7 @@ def get_trending_movies(limit=10):
     3. If still none, falls back to the highest-rated movies.
     """
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     try:
         # 1. Try to get movies based on recent watch sessions (last 30 days)
         cursor.execute("""
@@ -1663,7 +1703,7 @@ def get_trending_movies(limit=10):
 def update_movie_poster(movie_id, new_poster_url):
     """Updates the poster URL for a specific movie."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         print(f"Attempting to update poster for movie_id: {movie_id}")
         cursor.execute(
@@ -1683,7 +1723,7 @@ def update_movie_poster(movie_id, new_poster_url):
 def add_recommendation_feedback(user_id, movie_id, feedback='not_interested'):
     """Adds feedback for a recommended movie."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute(
             "INSERT INTO user_recommendation_feedback (user_id, movie_id, feedback) VALUES (%s, %s, %s)",
@@ -1703,7 +1743,7 @@ def add_recommendation_feedback(user_id, movie_id, feedback='not_interested'):
 def get_user_recommendation_feedback_ids(user_id):
     """Gets all movie IDs a user has marked as not interested."""
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     try:
         cursor.execute(
             "SELECT movie_id FROM user_recommendation_feedback WHERE user_id = %s AND feedback = 'not_interested'",
@@ -1723,7 +1763,7 @@ def get_reviews_for_user(user_id):
     Retrieves all reviews written by a specific user, including movie details.
     """
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     try:
         cursor.execute(
             '''
@@ -1749,7 +1789,7 @@ def get_user_badges(user_id):
     """
     badges = []
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     try:
         # First Watch
         cursor.execute("SELECT COUNT(*) as cnt FROM history WHERE user_id = %s", (user_id,))
@@ -1789,7 +1829,7 @@ def update_user_profile_custom(user_id, profile_pic, bio, favorite_genres):
     Assumes 'bio' and 'favorite_genres' columns exist in the users table.
     """
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute(
             """
@@ -1814,7 +1854,7 @@ def get_continue_watching(user_id):
     Includes active watch sessions (no ended_at) or history status not 'watched'.
     """
     conn = get_conn()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     try:
         # Active sessions (not ended)
         cursor.execute('''
@@ -1850,7 +1890,7 @@ def get_continue_watching(user_id):
 def get_watchlist_count(movie_id):
     """Return the number of users who have added the movie to their watchlist."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute("SELECT COUNT(*) FROM watchlist WHERE movie_id = %s", (movie_id,))
         count = cursor.fetchone()[0]
@@ -1865,7 +1905,7 @@ def get_watchlist_count(movie_id):
 def get_review_count(movie_id):
     """Return the number of reviews for the movie."""
     conn = get_conn()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     try:
         cursor.execute("SELECT COUNT(*) FROM ratings WHERE movie_id = %s AND review IS NOT NULL AND review != ''", (movie_id,))
         count = cursor.fetchone()[0]
