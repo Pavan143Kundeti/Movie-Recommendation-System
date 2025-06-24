@@ -55,6 +55,46 @@ def get_cursor(conn):
     except Exception:
         return conn.cursor()
 
+def diagnose_database():
+    """Diagnostic function to check database schema and tables."""
+    try:
+        conn = get_conn()
+        cursor = get_cursor(conn)
+        
+        print("🔍 Database Diagnosis:")
+        
+        # Check if users table exists
+        cursor.execute("SHOW TABLES LIKE 'users'")
+        if cursor.fetchone():
+            print("✅ users table exists")
+            
+            # Check users table structure
+            cursor.execute("DESCRIBE users")
+            columns = cursor.fetchall()
+            print("📋 users table columns:")
+            for col in columns:
+                # Handle both tuple and dict formats
+                if isinstance(col, dict):
+                    print(f"   - {col['Field']} ({col['Type']})")
+                else:
+                    print(f"   - {col[0]} ({col[1]})")
+        else:
+            print("❌ users table does not exist")
+            
+        # Check if movies table exists
+        cursor.execute("SHOW TABLES LIKE 'movies'")
+        if cursor.fetchone():
+            print("✅ movies table exists")
+        else:
+            print("❌ movies table does not exist")
+            
+        cursor.close()
+        conn.close()
+        
+    except Exception as e:
+        print(f"❌ Database diagnosis failed: {e}")
+        print(f"   Error type: {type(e).__name__}")
+
 # --- Table Creation (run once, or check/auto-create) ---
 CREATE_TABLES_SQL = [
     '''CREATE TABLE IF NOT EXISTS users (
@@ -933,42 +973,57 @@ def authenticate_user(username_or_email, password):
     password_hash = hash_password(password)
     print(f"[AUTH_DEBUG] Hashed input password to: {password_hash}")
 
-    conn = get_conn()
-    cursor = get_cursor(conn)
-    
-    # Check if the input is likely an email address
-    is_email = re.match(r"[^@]+@[^@]+\.[^@]+", username_or_email)
-    
-    # Fetch only the columns that actually exist in the users table
-    user_fields = "id, username, email, phone_number, password_hash, role, is_verified, created_at"
-    if is_email:
-        query = f"SELECT {user_fields} FROM users WHERE email = %s"
-    else:
-        query = f"SELECT {user_fields} FROM users WHERE username = %s"
+    try:
+        conn = get_conn()
+        cursor = get_cursor(conn)
         
-    cursor.execute(query, (username_or_email,))
-    user = cursor.fetchone()
-    
-    cursor.close()
-    conn.close()
-    
-    if not user:
-        print(f"[AUTH_DEBUG] User '{username_or_email}' not found in database.")
-        return None, "Invalid username/email or password."
+        # Check if the input is likely an email address
+        is_email = re.match(r"[^@]+@[^@]+\.[^@]+", username_or_email)
+        
+        # Fetch only the columns that actually exist in the users table
+        user_fields = "id, username, email, phone_number, password_hash, role, is_verified, created_at"
+        if is_email:
+            query = f"SELECT {user_fields} FROM users WHERE email = %s"
+        else:
+            query = f"SELECT {user_fields} FROM users WHERE username = %s"
+        
+        print(f"[AUTH_DEBUG] Executing query: {query}")
+        print(f"[AUTH_DEBUG] With parameter: {username_or_email}")
+        
+        cursor.execute(query, (username_or_email,))
+        user = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        if not user:
+            print(f"[AUTH_DEBUG] User '{username_or_email}' not found in database.")
+            return None, "Invalid username/email or password."
 
-    # Bypass email verification for admin users
-    if user.get('role') != 'admin' and not user.get('is_verified'):
-        print(f"[AUTH_DEBUG] User '{username_or_email}' found, but email is not verified.")
-        return None, "Email not verified. Please check your inbox for an OTP."
-    
-    if user.get('password_hash') == password_hash:
-        print("[AUTH_DEBUG] Password hashes match. Authentication successful.")
-        log_activity(user.get('id'), "user_login", f"User logged in: {user.get('username')}")
-        update_last_login(user.get('id'))
-        return user, "Success"
-    else:
-        print("[AUTH_DEBUG] Password hashes DO NOT match. Authentication failed.")
-        return None, "Invalid username/email or password."
+        # Bypass email verification for admin users
+        if user.get('role') != 'admin' and not user.get('is_verified'):
+            print(f"[AUTH_DEBUG] User '{username_or_email}' found, but email is not verified.")
+            return None, "Email not verified. Please check your inbox for an OTP."
+        
+        if user.get('password_hash') == password_hash:
+            print("[AUTH_DEBUG] Password hashes match. Authentication successful.")
+            log_activity(user.get('id'), "user_login", f"User logged in: {user.get('username')}")
+            update_last_login(user.get('id'))
+            return user, "Success"
+        else:
+            print("[AUTH_DEBUG] Password hashes DO NOT match. Authentication failed.")
+            return None, "Invalid username/email or password."
+            
+    except Exception as e:
+        print(f"[AUTH_DEBUG] Exception in authenticate_user: {e}")
+        print(f"[AUTH_DEBUG] Exception type: {type(e).__name__}")
+        
+        # Run diagnostic if it's a database error
+        if "mysql" in str(type(e)).lower() or "programming" in str(e).lower():
+            print("[AUTH_DEBUG] Running database diagnosis...")
+            diagnose_database()
+        
+        return None, f"Database error: {str(e)}"
 
 def get_all_users():
     """Retrieves all users from the database."""
