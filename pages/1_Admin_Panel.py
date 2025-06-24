@@ -7,6 +7,30 @@ from app import load_and_build_model
 import io
 import os
 
+# --- SESSION STATE CHECK ---
+if 'user' not in st.session_state or st.session_state.user is None:
+    st.error("You must be logged in as an admin to access this page.")
+    st.stop()
+
+# Check if user is logged in and is admin
+if 'logged_in' not in st.session_state or not st.session_state.logged_in:
+    st.error("Please log in to access the admin panel.")
+    st.stop()
+
+if 'user' not in st.session_state or not st.session_state.user:
+    st.error("User session not found. Please log in again.")
+    st.stop()
+
+# Check if user is admin
+user_role = st.session_state.user.get('role', 'user')
+if user_role != 'admin':
+    st.error("Access denied. Admin privileges required.")
+    st.stop()
+
+# Initialize admin section if not set
+if 'admin_section' not in st.session_state:
+    st.session_state.admin_section = "dashboard"
+
 # Modern Admin Panel Sidebar UI
 st.markdown("""
     <style>
@@ -69,39 +93,46 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-with st.sidebar:
-    st.markdown('<div class="admin-sidebar-section" style="text-align:center;">', unsafe_allow_html=True)
-    st.image(
-        'https://ui-avatars.com/api/?name=' + st.session_state.user.get('username', 'Admin'),
-        width=84,
-        output_format="auto",
-        caption="",
-        use_column_width=False
-    )
-    st.markdown(f'<div class="admin-sidebar-username">{st.session_state.user.get("username", "N/A")}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="admin-sidebar-email">{st.session_state.user.get("email", "N/A")}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div style="font-size:1rem;color:#888;">Role: Admin</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+def render_sidebar():
+    """Render the admin sidebar with user info and navigation"""
+    with st.sidebar:
+        st.markdown('<div class="admin-sidebar-section" style="text-align:center;">', unsafe_allow_html=True)
+        
+        # Safely get user info
+        username = st.session_state.user.get('username', 'Admin') if st.session_state.user else 'Admin'
+        email = st.session_state.user.get('email', 'N/A') if st.session_state.user else 'N/A'
+        
+        st.image(
+            'https://ui-avatars.com/api/?name=' + username,
+            width=84,
+            output_format="auto",
+            caption="",
+            use_column_width=False
+        )
+        st.markdown(f'<div class="admin-sidebar-username">{username}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="admin-sidebar-email">{email}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="font-size:1rem;color:#888;">Role: Admin</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="admin-section-title">Management</div>', unsafe_allow_html=True)
-    if st.button("👥 User Management", key="admin_user_mgmt", help="Manage users", use_container_width=True):
-        st.session_state.admin_section = "user"
-    if st.button("🎬 Movie Management", key="admin_movie_mgmt", help="Manage movies", use_container_width=True):
-        st.session_state.admin_section = "movie"
+        st.markdown('<div class="admin-section-title">Management</div>', unsafe_allow_html=True)
+        if st.button("👥 User Management", key="admin_user_mgmt", help="Manage users", use_container_width=True):
+            st.session_state.admin_section = "user"
+        if st.button("🎬 Movie Management", key="admin_movie_mgmt", help="Manage movies", use_container_width=True):
+            st.session_state.admin_section = "movie"
 
-    st.markdown('<div class="admin-section-title">Analytics</div>', unsafe_allow_html=True)
-    if st.button("📈 Analytics", key="admin_analytics", help="View analytics", use_container_width=True):
-        st.session_state.admin_section = "analytics"
+        st.markdown('<div class="admin-section-title">Analytics</div>', unsafe_allow_html=True)
+        if st.button("📈 Analytics", key="admin_analytics", help="View analytics", use_container_width=True):
+            st.session_state.admin_section = "analytics"
 
-    st.markdown('<div class="admin-section-title">Settings</div>', unsafe_allow_html=True)
-    if st.button("⚙️ Settings", key="admin_settings", help="Admin settings", use_container_width=True):
-        st.session_state.admin_section = "settings"
+        st.markdown('<div class="admin-section-title">Settings</div>', unsafe_allow_html=True)
+        if st.button("⚙️ Settings", key="admin_settings", help="Admin settings", use_container_width=True):
+            st.session_state.admin_section = "settings"
 
-    st.markdown('<div class="admin-section-title">Session</div>', unsafe_allow_html=True)
-    if st.button("🚪 Logout", key="admin_logout", help="Logout", use_container_width=True):
-        st.session_state.logged_in = False
-        st.session_state.user = None
-        st.rerun()
+        st.markdown('<div class="admin-section-title">Session</div>', unsafe_allow_html=True)
+        if st.button("🚪 Logout", key="admin_logout", help="Logout", use_container_width=True):
+            st.session_state.logged_in = False
+            st.session_state.user = None
+            st.rerun()
 
 def inject_custom_css():
     st.markdown("""
@@ -421,26 +452,22 @@ def render_system_config():
     tmdb_population_section()
 
 def admin_panel():
+    # Render the sidebar first
+    render_sidebar()
+    
     st.title("⚙️ Admin Panel")
-
-    # --- Security Check ---
-    if 'user' not in st.session_state or st.session_state.user.get('role') != 'admin':
-        st.error("🚫 You do not have permission to access this page.")
-        if st.button("Back to Home"):
-            st.switch_page("app.py")
-        return
 
     inject_custom_css()
 
     # Show only the selected admin section content
-    section = st.session_state.get("admin_section", "user")  # Default to "user"
+    section = st.session_state.get("admin_section", "dashboard")  # Default to "dashboard"
 
-    if section == "user":
-        st.header("👥 User Management")
-        st.info("Manage users here. (Add your user management UI)")
+    if section == "dashboard":
+        render_dashboard()
+    elif section == "user":
+        render_user_management()
     elif section == "movie":
-        st.header("🎬 Movie Management")
-        st.info("Manage movies here. (Add your movie management UI)")
+        render_content_management()
     elif section == "analytics":
         st.header("📈 Analytics")
         st.subheader("User Statistics")
@@ -458,32 +485,14 @@ def admin_panel():
         })
         st.bar_chart(data.set_index("Movies"))
     elif section == "settings":
-        st.header("⚙️ Settings")
-        st.subheader("Admin Profile Settings")
-        with st.form("admin_settings_form"):
-            new_email = st.text_input("Change Email", value=st.session_state.user.get("email", ""))
-            new_name = st.text_input("Change Name", value=st.session_state.user.get("full_name", ""))
-            submitted = st.form_submit_button("Save Settings")
-            if submitted:
-                st.success("Settings updated!")  # Add real update logic here
+        render_system_config()
     else:
         st.header("Welcome to the Admin Panel")
         st.info("Select a section from the sidebar.")
 
     # Optionally, reset the section on logout
     if not st.session_state.get("logged_in", False):
-        st.session_state["admin_section"] = "user"
-
-    # Remove all sidebar code here. Only render main content.
-    # Example: Always show dashboard, user management, content management, and system config in sequence (or as tabs if you want, but not in the sidebar)
-    st.header("Admin Dashboard Sections")
-    render_dashboard()
-    st.divider()
-    render_user_management()
-    st.divider()
-    render_content_management()
-    st.divider()
-    render_system_config()
+        st.session_state["admin_section"] = "dashboard"
 
 def main():
     admin_panel()
