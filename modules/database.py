@@ -10,8 +10,17 @@ import os
 # --- Robust MySQL import for error handling ---
 try:
     import mysql.connector
+    MYSQL_AVAILABLE = True
 except ImportError:
     mysql = None
+    MYSQL_AVAILABLE = False
+
+try:
+    import pymysql
+    PYMySQL_AVAILABLE = True
+except ImportError:
+    pymysql = None
+    PYMySQL_AVAILABLE = False
 
 # --- Database Connection Config ---
 DB_CONFIG = {
@@ -22,30 +31,44 @@ DB_CONFIG = {
 }
 
 def get_conn():
-    # Try direct MySQL connection
-    if mysql is not None:
+    """Get database connection with fallback logic."""
+    # Try mysql.connector first
+    if MYSQL_AVAILABLE and mysql is not None:
         try:
-            return mysql.connector.connect(
+            conn = mysql.connector.connect(
                 host=DB_CONFIG['host'],
                 user=DB_CONFIG['user'],
                 password=DB_CONFIG['password'],
                 database=DB_CONFIG['database']
             )
+            print("✅ Connected using mysql.connector")
+            return conn
         except Exception as e:
-            print(f"⚠️  Direct mysql.connector connection failed: {e}")
-    # Try PyMySQL
-    try:
-        import pymysql
-        return pymysql.connect(
-            host=DB_CONFIG['host'],
-            user=DB_CONFIG['user'],
-            password=DB_CONFIG['password'],
-            database=DB_CONFIG['database'],
-            charset='utf8mb4'
-        )
-    except Exception as e:
-        print(f"⚠️  PyMySQL connection failed: {e}")
-    st.error("No MySQL connector available or database connection failed. Please check your credentials and install mysql-connector-python or PyMySQL.")
+            print(f"⚠️  mysql.connector connection failed: {e}")
+    
+    # Try PyMySQL as fallback
+    if PYMySQL_AVAILABLE and pymysql is not None:
+        try:
+            conn = pymysql.connect(
+                host=DB_CONFIG['host'],
+                user=DB_CONFIG['user'],
+                password=DB_CONFIG['password'],
+                database=DB_CONFIG['database'],
+                charset='utf8mb4'
+            )
+            print("✅ Connected using PyMySQL")
+            return conn
+        except Exception as e:
+            print(f"⚠️  PyMySQL connection failed: {e}")
+    
+    # If we get here, no connector worked
+    error_msg = "No database connector available. "
+    if not MYSQL_AVAILABLE and not PYMySQL_AVAILABLE:
+        error_msg += "Please install mysql-connector-python or PyMySQL."
+    else:
+        error_msg += "Database connection failed. Please check your credentials."
+    
+    st.error(error_msg)
     raise Exception("No database connector available")
 
 def get_cursor(conn):
