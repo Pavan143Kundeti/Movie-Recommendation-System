@@ -7,6 +7,12 @@ import json
 import re
 import os
 
+# --- Robust MySQL import for error handling ---
+try:
+    import mysql.connector
+except ImportError:
+    mysql = None
+
 # --- Database Connection Config ---
 DB_CONFIG = {
     'host': st.secrets["mysql"]["host"],
@@ -17,16 +23,16 @@ DB_CONFIG = {
 
 def get_conn():
     # Try direct MySQL connection
-    try:
-        import mysql.connector
-        return mysql.connector.connect(
-            host=DB_CONFIG['host'],
-            user=DB_CONFIG['user'],
-            password=DB_CONFIG['password'],
-            database=DB_CONFIG['database']
-        )
-    except Exception as e:
-        print(f"⚠️  Direct mysql.connector connection failed: {e}")
+    if mysql is not None:
+        try:
+            return mysql.connector.connect(
+                host=DB_CONFIG['host'],
+                user=DB_CONFIG['user'],
+                password=DB_CONFIG['password'],
+                database=DB_CONFIG['database']
+            )
+        except Exception as e:
+            print(f"⚠️  Direct mysql.connector connection failed: {e}")
     # Try PyMySQL
     try:
         import pymysql
@@ -233,7 +239,7 @@ def init_database():
     for command in commands:
         try:
             cursor.execute(command)
-        except mysql.connector.Error as err:
+        except Exception as err:
             st.error(f"Error creating table: {err}")
 
     conn.commit()
@@ -393,7 +399,7 @@ def create_tables():
     for command in commands:
         try:
             cursor.execute(command)
-        except mysql.connector.Error as err:
+        except Exception as err:
             st.error(f"Error creating table: {err}")
 
     conn.commit()
@@ -415,8 +421,8 @@ def log_activity(user_id, action, details=""):
         )
         conn.commit()
         return True
-    except mysql.connector.Error as err:
-        st.error(f"Error logging activity: {err}")
+    except Exception as e:
+        st.error(f"Error logging activity: {e}")
         return False
     finally:
         cursor.close()
@@ -436,8 +442,8 @@ def get_user_activity(user_id, limit=5):
             LIMIT %s
         """, (user_id, limit))
         return cursor.fetchall()
-    except mysql.connector.Error as err:
-        st.error(f"Error fetching activity: {err}")
+    except Exception as e:
+        st.error(f"Error fetching activity: {e}")
         return []
     finally:
         cursor.close()
@@ -502,8 +508,8 @@ def get_dashboard_metrics():
         if result and result.get('avg_watch') is not None:
             metrics['avg_watch_time'] = round(result['avg_watch'], 2)
 
-    except mysql.connector.Error as err:
-        print(f"Error fetching dashboard metrics: {err}")
+    except Exception as e:
+        print(f"Error fetching dashboard metrics: {e}")
     finally:
         cursor.close()
         conn.close()
@@ -595,8 +601,8 @@ def get_advanced_dashboard_metrics():
         """)
         metrics['admin_activity'] = cursor.fetchall()
 
-    except mysql.connector.Error as err:
-        print(f"Error fetching advanced metrics: {err}")
+    except Exception as e:
+        print(f"Error fetching advanced metrics: {e}")
         return {}
     finally:
         cursor.close()
@@ -612,8 +618,8 @@ def manually_verify_user(user_id):
         cursor.execute("UPDATE users SET is_verified = 1 WHERE id = %s", (user_id,))
         conn.commit()
         return True
-    except mysql.connector.Error as err:
-        print(f"Error manually verifying user: {err}")
+    except Exception as e:
+        print(f"Error manually verifying user: {e}")
         return False
     finally:
         cursor.close()
@@ -628,8 +634,8 @@ def reset_user_password_by_admin(user_id, new_password):
         cursor.execute("UPDATE users SET password_hash = %s WHERE id = %s", (hashed_password, user_id))
         conn.commit()
         return True
-    except mysql.connector.Error as err:
-        print(f"Error resetting password by admin: {err}")
+    except Exception as e:
+        print(f"Error resetting password by admin: {e}")
         return False
     finally:
         cursor.close()
@@ -651,8 +657,8 @@ def get_movie_suggestions(query, limit=10):
             LIMIT %s
         """, (f"%{query}%", limit))
         return cursor.fetchall()
-    except mysql.connector.Error as err:
-        st.error(f"Error fetching suggestions: {err}")
+    except Exception as e:
+        st.error(f"Error fetching suggestions: {e}")
         return []
     finally:
         cursor.close()
@@ -747,9 +753,9 @@ def bulk_upload_movies(csv_data, uploaded_by):
         
         return True, message
 
-    except mysql.connector.Error as err:
+    except Exception as e:
         conn.rollback()
-        return False, f"A database error occurred: {err}"
+        return False, f"A database error occurred: {e}"
     finally:
         cursor.close()
         conn.close()
@@ -789,7 +795,7 @@ def get_movie_filter_bounds():
                 languages.update(lang.strip() for lang in row['audio_languages'].split(','))
             bounds['audio_languages'] = sorted(list(languages))
 
-    except mysql.connector.Error as err:
+    except Exception as err:
         print(f"Error getting filter bounds: {err}")
     finally:
         cursor.close()
@@ -871,7 +877,7 @@ def get_movies_paginated(page=1, per_page=12, query=None, movie_type=None, genre
         cursor.execute(count_sql, params)
         result = cursor.fetchone()
         total_movies = result['total'] if result else 0
-    except mysql.connector.Error as err:
+    except Exception as err:
         print(f"Error counting movies: {err}")
         return [], 0
 
@@ -892,7 +898,7 @@ def get_movies_paginated(page=1, per_page=12, query=None, movie_type=None, genre
         cursor.execute(select_sql, params + [per_page, offset])
         movies = cursor.fetchall()
         return movies, total_movies
-    except mysql.connector.Error as err:
+    except Exception as err:
         print(f"Error fetching paginated movies: {err}")
         return [], 0
     finally:
@@ -965,7 +971,7 @@ def get_all_users():
         cursor.execute("SELECT id, username, email, role, is_verified, created_at FROM users ORDER BY id ASC")
         users = cursor.fetchall()
         return users
-    except mysql.connector.Error as e:
+    except Exception as e:
         st.error(f"Database error fetching users: {e}")
         return []
     finally:
@@ -1013,7 +1019,7 @@ def delete_user(user_id, admin_id):
             st.warning("User not found. They may have been deleted already.")
             return False
             
-    except mysql.connector.Error as e:
+    except Exception as e:
         # If any part of the transaction fails, roll it all back
         conn.rollback()
         st.error(f"Database error during user deletion: {e}")
@@ -1042,7 +1048,7 @@ def add_movie(title, item_type, genre, release_year, description, cast, poster_u
         conn.commit()
         log_activity(uploaded_by, "add_movie", f"Added movie: {title}")
         return True
-    except mysql.connector.Error as err:
+    except Exception as err:
         # Error 1062 is for a duplicate entry (e.g., same title)
         if err.errno == 1062:
             st.warning(f"A movie with the title '{title}' already exists.")
@@ -1063,7 +1069,7 @@ def get_all_movies():
         cursor.execute("SELECT id, title, type, genre, release_year, description, cast, poster_url FROM movies ORDER BY id DESC")
         movies = cursor.fetchall()
         return movies
-    except mysql.connector.Error as e:
+    except Exception as e:
         st.error(f"Database error fetching movies: {e}")
         return []
     finally:
@@ -1125,7 +1131,7 @@ def add_to_watchlist(user_id, movie_id):
             log_activity(user_id, "add_to_watchlist", f"Added movie {movie_id} to watchlist")
             return True
         return False
-    except mysql.connector.Error:
+    except Exception:
         return False
     finally:
         cursor.close()
@@ -1147,7 +1153,7 @@ def remove_from_watchlist(user_id, movie_id):
             log_activity(user_id, "remove_from_watchlist", f"Removed movie {movie_id} from watchlist")
             return True
         return False
-    except mysql.connector.Error:
+    except Exception:
         return False
     finally:
         cursor.close()
@@ -1185,7 +1191,7 @@ def add_to_history(user_id, movie_id, status='watched'):
         
         log_activity(user_id, "add_to_history", f"Added movie {movie_id} to history with status: {status}")
         return True
-    except mysql.connector.Error:
+    except Exception:
         return False
     finally:
         cursor.close()
@@ -1216,7 +1222,7 @@ def is_in_watchlist(user_id, movie_id):
     try:
         cursor.execute("SELECT 1 FROM watchlist WHERE user_id = %s AND movie_id = %s", (user_id, movie_id))
         return cursor.fetchone() is not None
-    except mysql.connector.Error:
+    except Exception:
         return False
     finally:
         cursor.close()
@@ -1345,7 +1351,7 @@ def get_user_stats(user_id):
             stats["average_rating"] = float(rating_data['avg_r'])
             stats["total_reviews"] = rating_data['total_r']
 
-    except mysql.connector.Error as err:
+    except Exception as err:
         print(f"Error fetching user stats: {err}")
         # Return default stats on error
     
@@ -1374,7 +1380,7 @@ def get_rating_summary(movie_id):
         )
         summary = cursor.fetchone()
         return summary
-    except mysql.connector.Error:
+    except Exception:
         return {'average_rating': 0, 'review_count': 0}
     finally:
         cursor.close()
@@ -1400,7 +1406,7 @@ def get_reviews_for_movie(movie_id, limit=5):
         )
         reviews = cursor.fetchall()
         return reviews
-    except mysql.connector.Error:
+    except Exception:
         return []
     finally:
         cursor.close()
@@ -1426,7 +1432,7 @@ def add_or_update_review(movie_id, user_id, rating, review):
         )
         conn.commit()
         return True
-    except mysql.connector.Error as err:
+    except Exception as err:
         st.error(f"Database error while submitting review: {err}")
         return False
     finally:
@@ -1505,8 +1511,8 @@ def set_user_verified(email):
             log_activity(user['id'], "user_registration", f"New user verified and registered: {user['username']}")
             
         return True
-    except mysql.connector.Error as e:
-        st.error(f"Database error during verification: {e}")
+    except Exception as err:
+        st.error(f"Database error during verification: {err}")
         return False
     finally:
         cursor.close()
@@ -1525,11 +1531,11 @@ def update_user_profile(user_id, username, email, phone_number):
         # Log the profile update
         log_activity(user_id, "profile_update", f"User {username} updated their profile.")
         return True, "Profile updated successfully!"
-    except mysql.connector.Error as e:
-        if e.errno == 1062:  # Duplicate entry error code
+    except Exception as err:
+        if err.errno == 1062:  # Duplicate entry error code
             return False, "That username or email is already taken. Please choose another."
         else:
-            return False, f"A database error occurred: {e}"
+            return False, f"A database error occurred: {err}"
     finally:
         cursor.close()
         conn.close()
@@ -1559,8 +1565,8 @@ def change_password(user_id, old_password, new_password):
         log_activity(user_id, "password_change", "User changed their password.")
         return True, "Password updated successfully!"
         
-    except mysql.connector.Error as e:
-        return False, f"A database error occurred: {e}"
+    except Exception as err:
+        return False, f"A database error occurred: {err}"
     finally:
         cursor.close()
         conn.close()
@@ -1580,7 +1586,7 @@ def start_watch_session(user_id, movie_id):
         conn.commit()
         session_id = cursor.lastrowid
         return session_id
-    except mysql.connector.Error as err:
+    except Exception as err:
         print(f"Error starting watch session: {err}")
         return None
     finally:
@@ -1604,7 +1610,7 @@ def end_watch_session(session_id):
         )
         conn.commit()
         return True
-    except mysql.connector.Error as err:
+    except Exception as err:
         print(f"Error ending watch session: {err}")
         return False
     finally:
@@ -1678,7 +1684,7 @@ def get_trending_movies(limit=10):
             trending_movies = cursor.fetchall()
             
         return trending_movies
-    except mysql.connector.Error as err:
+    except Exception as err:
         print(f"Error getting trending movies: {err}")
         return []
     finally:
@@ -1698,7 +1704,7 @@ def update_movie_poster(movie_id, new_poster_url):
         conn.commit()
         print(f"Update executed. Rows affected: {cursor.rowcount}")
         return cursor.rowcount > 0
-    except mysql.connector.Error as e:
+    except Exception as e:
         st.error(f"Database error updating poster: {e}")
         return False
     finally:
@@ -1716,10 +1722,10 @@ def add_recommendation_feedback(user_id, movie_id, feedback='not_interested'):
         )
         conn.commit()
         return True
-    except mysql.connector.Error as e:
-        if e.errno == 1062: # Duplicate entry
+    except Exception as err:
+        if err.errno == 1062: # Duplicate entry
             return True # Already recorded, treat as success
-        print(f"Database error providing feedback: {e}")
+        print(f"Database error providing feedback: {err}")
         return False
     finally:
         cursor.close()
@@ -1736,8 +1742,8 @@ def get_user_recommendation_feedback_ids(user_id):
         )
         excluded_ids = [row['movie_id'] for row in cursor.fetchall()]
         return excluded_ids
-    except mysql.connector.Error as e:
-        print(f"Database error fetching feedback: {e}")
+    except Exception as err:
+        print(f"Database error fetching feedback: {err}")
         return []
     finally:
         cursor.close()
