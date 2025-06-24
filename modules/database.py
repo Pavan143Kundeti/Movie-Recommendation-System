@@ -31,10 +31,14 @@ DB_CONFIG = {
 }
 
 def get_conn():
-    """Get database connection with fallback logic."""
+    print("DEBUG: MYSQL_AVAILABLE =", MYSQL_AVAILABLE)
+    print("DEBUG: PYMySQL_AVAILABLE =", PYMySQL_AVAILABLE)
+    print("DEBUG: mysql =", mysql)
+    print("DEBUG: pymysql =", pymysql)
     # Try mysql.connector first
     if MYSQL_AVAILABLE and mysql is not None:
         try:
+            print("Trying mysql.connector.connect...")
             conn = mysql.connector.connect(
                 host=DB_CONFIG['host'],
                 user=DB_CONFIG['user'],
@@ -45,10 +49,10 @@ def get_conn():
             return conn
         except Exception as e:
             print(f"⚠️  mysql.connector connection failed: {e}")
-    
     # Try PyMySQL as fallback
     if PYMySQL_AVAILABLE and pymysql is not None:
         try:
+            print("Trying pymysql.connect...")
             conn = pymysql.connect(
                 host=DB_CONFIG['host'],
                 user=DB_CONFIG['user'],
@@ -60,14 +64,12 @@ def get_conn():
             return conn
         except Exception as e:
             print(f"⚠️  PyMySQL connection failed: {e}")
-    
     # If we get here, no connector worked
     error_msg = "No database connector available. "
     if not MYSQL_AVAILABLE and not PYMySQL_AVAILABLE:
         error_msg += "Please install mysql-connector-python or PyMySQL."
     else:
         error_msg += "Database connection failed. Please check your credentials."
-    
     st.error(error_msg)
     raise Exception("No database connector available")
 
