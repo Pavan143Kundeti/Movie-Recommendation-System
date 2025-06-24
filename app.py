@@ -884,23 +884,23 @@ def main():
         elif page == 'admin_panel':
             # Only allow admins to access admin panel
             if st.session_state.user.get('is_admin') or st.session_state.user.get('role') == 'admin':
-            admin_panel_path = os.path.join('pages', '1_Admin_Panel.py')
-            if os.path.exists(admin_panel_path):
-                spec = importlib.util.spec_from_file_location('admin_panel', admin_panel_path)
-                if spec is not None and spec.loader is not None:
-                    admin_panel = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(admin_panel)
-                    if hasattr(admin_panel, 'main'):
-                        admin_panel.main()
+                admin_panel_path = os.path.join('pages', '1_Admin_Panel.py')
+                if os.path.exists(admin_panel_path):
+                    spec = importlib.util.spec_from_file_location('admin_panel', admin_panel_path)
+                    if spec is not None and spec.loader is not None:
+                        admin_panel = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(admin_panel)
+                        if hasattr(admin_panel, 'main'):
+                            admin_panel.main()
+                        else:
+                            st.header('🛡️ Admin Panel')
+                            st.write('Admin Panel page loaded, but no main() function found.')
                     else:
                         st.header('🛡️ Admin Panel')
-                        st.write('Admin Panel page loaded, but no main() function found.')
+                        st.write('Could not load Admin Panel module spec or loader.')
                 else:
                     st.header('🛡️ Admin Panel')
-                    st.write('Could not load Admin Panel module spec or loader.')
-            else:
-                st.header('🛡️ Admin Panel')
-                st.write('Admin Panel page not found.')
+                    st.write('Admin Panel page not found.')
             else:
                 st.error('🚫 You do not have permission to access the Admin Panel.')
         elif page == 'dashboard' or True:
