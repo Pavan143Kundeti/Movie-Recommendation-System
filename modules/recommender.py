@@ -1,6 +1,13 @@
 import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import linear_kernel
+
+# Try to import scikit-learn components with fallback
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import linear_kernel
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+    print("Warning: scikit-learn not available. Using simple recommendation fallback.")
 
 # This global variable will cache the computed similarity matrix
 similarity_matrix_cache = None
@@ -11,6 +18,12 @@ def build_recommendation_model(movies_df):
     Builds and returns the cosine similarity matrix for the movies.
     """
     global similarity_matrix_cache, movie_data_cache
+    
+    if not SKLEARN_AVAILABLE:
+        # Fallback: just cache the movie data for simple recommendations
+        movie_data_cache = movies_df
+        similarity_matrix_cache = None
+        return None, movies_df
     
     # --- Feature Engineering ---
     # Create a 'soup' of text features for each movie
@@ -37,9 +50,13 @@ def get_recommendations(movie_title, num_recommendations=10):
     """
     Gets movie recommendations based on a given movie title.
     """
-    if similarity_matrix_cache is None or movie_data_cache is None:
+    if movie_data_cache is None:
         # This should ideally be handled by pre-loading the model
         return pd.DataFrame() # Return empty if model not built
+
+    if not SKLEARN_AVAILABLE or similarity_matrix_cache is None:
+        # Fallback: return movies with similar genres
+        return get_simple_recommendations(movie_title, num_recommendations)
 
     # Create a mapping of movie titles to indices
     indices = pd.Series(movie_data_cache.index, index=movie_data_cache['title']).drop_duplicates()
@@ -78,4 +95,50 @@ def get_recommendations(movie_title, num_recommendations=10):
         ]
 
     # Return the top N unique recommendations
-    return recommended_movies.head(num_recommendations) 
+    return recommended_movies.head(num_recommendations)
+
+def get_simple_recommendations(movie_title, num_recommendations=10):
+    """
+    Simple fallback recommendation system based on genre similarity.
+    """
+    if movie_data_cache is None:
+        return pd.DataFrame()
+    
+    try:
+        # Find the target movie
+        target_movie = movie_data_cache[movie_data_cache['title'] == movie_title].iloc[0]
+        target_genre = target_movie.get('genre', '')
+        
+        if not target_genre:
+            # If no genre, return random movies
+            return movie_data_cache.sample(min(num_recommendations, len(movie_data_cache)))
+        
+        # Find movies with similar genres
+        similar_movies = movie_data_cache[
+            (movie_data_cache['genre'].str.contains(target_genre, case=False, na=False)) &
+            (movie_data_cache['title'] != movie_title)
+        ]
+        
+        if len(similar_movies) < num_recommendations:
+            # If not enough similar movies, add some random ones
+            remaining = num_recommendations - len(similar_movies)
+            other_movies = movie_data_cache[
+                (~movie_data_cache['genre'].str.contains(target_genre, case=False, na=False)) &
+                (movie_data_cache['title'] != movie_title)
+            ]
+            if len(other_movies) > 0:
+                additional = other_movies.sample(min(remaining, len(other_movies)))
+                similar_movies = pd.concat([similar_movies, additional])
+        
+        # Filter for posters and return
+        if 'poster_url' in similar_movies.columns:
+            similar_movies = similar_movies[
+                similar_movies['poster_url'].notna() & 
+                similar_movies['poster_url'].str.strip().str.startswith('http', na=False)
+            ]
+        
+        return similar_movies.head(num_recommendations)
+        
+    except (IndexError, KeyError):
+        # If anything goes wrong, return random movies
+        return movie_data_cache.sample(min(num_recommendations, len(movie_data_cache))) 

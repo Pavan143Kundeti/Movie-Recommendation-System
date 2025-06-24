@@ -478,6 +478,17 @@ If you encounter this error:
 2. Verify the MySQL connector version is compatible
 3. The app will automatically fall back to PyMySQL if mysql.connector fails
 
+### ModuleNotFoundError: sklearn
+
+**Solution**: The app now includes fallback recommendation systems:
+- Primary: `scikit-learn==1.3.0` with TF-IDF and cosine similarity
+- Fallback: Simple genre-based recommendations
+
+If you encounter this error:
+1. Check that `requirements.txt` includes scikit-learn and its dependencies
+2. The app will automatically use simple genre-based recommendations if scikit-learn fails
+3. Both systems provide movie recommendations, but the fallback is less sophisticated
+
 ### Database Connection Issues
 
 **Common Causes**:
@@ -490,11 +501,15 @@ If you encounter this error:
 2. Ensure database allows connections from Streamlit Cloud IPs
 3. Verify credentials in `.streamlit/secrets.toml`
 
-### Testing Database Connection
+### Testing Dependencies
 
-Run the test script locally to verify database connectivity:
+Run these test scripts locally to verify functionality:
 ```bash
+# Test database connection
 python test_connection.py
+
+# Test recommender system
+python test_recommender.py
 ```
 
 ## Environment Variables
@@ -509,6 +524,7 @@ Make sure these are set in your Streamlit Cloud deployment:
 1. **Database Connection Pooling**: The app uses connection pooling for better performance
 2. **Caching**: Streamlit caching is implemented for expensive operations
 3. **Pagination**: Large datasets are paginated to improve load times
+4. **Fallback Systems**: Both database and recommender systems have fallbacks for reliability
 
 ## Security Considerations
 
@@ -521,7 +537,8 @@ Make sure these are set in your Streamlit Cloud deployment:
 If you continue to experience issues:
 1. Check the Streamlit Cloud logs for detailed error messages
 2. Verify all dependencies are correctly specified
-3. Test the database connection locally first
+3. Test the database connection and recommender system locally first
+4. The app includes fallback systems for both database and recommendation functionality
 
 ---
 
