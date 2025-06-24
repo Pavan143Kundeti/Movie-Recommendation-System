@@ -127,17 +127,26 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 # --- Caching Data Functions ---
-@st.cache_data(ttl=600) # Cache for 10 minutes
 def get_cached_dashboard_metrics():
-    return database.get_advanced_dashboard_metrics()
+    try:
+        return database.get_advanced_dashboard_metrics()
+    except Exception as e:
+        st.error(f"Error fetching dashboard metrics: {e}")
+        return {}
 
-@st.cache_data(ttl=300) # Cache for 5 minutes
 def get_cached_users():
-    return database.get_all_users()
+    try:
+        return database.get_all_users()
+    except Exception as e:
+        st.error(f"Error fetching users: {e}")
+        return []
 
-@st.cache_data(ttl=300)
 def get_cached_movies():
-    return database.get_all_movies()
+    try:
+        return database.get_all_movies()
+    except Exception as e:
+        st.error(f"Error fetching movies: {e}")
+        return []
 
 def render_dashboard():
     st.header("🚀 Dashboard Overview")
@@ -217,7 +226,6 @@ def render_user_management():
                 if username and email and password and role:
                     if database.add_user(username, email, password):
                         st.toast(f"User '{username}' created!", icon="✅")
-                        get_cached_users.clear()
                         st.rerun()
                 else:
                     st.warning("Please fill out all fields.")
@@ -240,13 +248,11 @@ def render_user_management():
                 if st.button("🗑️ Delete User", type="primary", key=f"delete_{user_id_to_act_on}"):
                     if database.delete_user(user_id_to_act_on, st.session_state.user['id']):
                         st.toast("User deleted!", icon="🗑️")
-                        get_cached_users.clear()
                         st.rerun()
 
                 if st.button("✅ Manually Verify", key=f"verify_{user_id_to_act_on}"):
                     if database.manually_verify_user(user_id_to_act_on):
                         st.toast("User manually verified!", icon="✅")
-                        get_cached_users.clear()
                         st.rerun()
 
     with tool_cols[2]:
@@ -281,7 +287,6 @@ def single_movie_upload():
             if all([title, item_type, release_year]):
                 if database.add_movie(title, item_type, genre, release_year, description, cast, poster_url, trailer_url, audio_languages, st.session_state.user['id']):
                     st.toast(f"Movie '{title}' uploaded!", icon="🎬")
-                    get_cached_movies.clear()
                     st.rerun()
                 else:
                     st.toast("Failed to upload movie.", icon="❌")
@@ -299,7 +304,6 @@ def bulk_upload_section():
                 success, message = database.bulk_upload_movies(df, st.session_state.user['id'])
                 if success:
                     st.success(message)
-                    get_cached_movies.clear()
                     st.rerun()
                 else:
                     st.error(message)
@@ -336,7 +340,6 @@ def poster_fix_section():
                 if new_poster_url and new_poster_url.startswith('http'):
                     if database.update_movie_poster(selected_movie_id, new_poster_url):
                         st.toast("Poster updated successfully!", icon="🖼️")
-                        get_cached_movies.clear()
                         st.rerun()
                 else:
                     st.error("Failed to update poster.")
@@ -367,7 +370,6 @@ def tmdb_population_section():
 
                     if success:
                         st.success(message)
-                        get_cached_movies.clear()
                         st.rerun()
                     else:
                         st.error(f"Failed to populate: {message}")
@@ -414,17 +416,6 @@ def render_content_management():
 
 def render_system_config():
     st.header("⚙️ System & Configuration")
-    
-    st.subheader("Cache Management")
-    if st.button("Clear All App Caches"):
-        st.cache_data.clear()
-        get_cached_dashboard_metrics.clear()
-        get_cached_users.clear()
-        get_cached_movies.clear()
-        st.toast("All caches have been cleared!", icon="🧹")
-        st.rerun()
-
-    st.divider()
     
     st.subheader("TMDB Data Population")
     tmdb_population_section()
