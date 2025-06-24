@@ -209,7 +209,7 @@ def render_user_management():
         return
 
     users_df = pd.DataFrame(all_users)
-    st.dataframe(users_df[['id', 'username', 'email', 'role', 'is_verified', 'created_at']], use_container_width=True)
+    st.dataframe(users_df[['id', 'username', 'email', 'role', 'is_verified', 'date_joined']], use_container_width=True)
 
     st.divider()
     

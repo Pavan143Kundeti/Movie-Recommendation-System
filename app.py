@@ -77,7 +77,7 @@ def row_to_dict(row):
     return {}
 
 def get_filter_data():
-    """Caches the filter bounds (years, genres, etc.) to prevent re-querying."""
+    """Gets the filter bounds (years, genres, etc.) to prevent re-querying."""
     try:
         return database.get_movie_filter_bounds()
     except Exception as e:
