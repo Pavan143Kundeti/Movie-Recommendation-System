@@ -1,17 +1,3 @@
-try:
-    import mysql.connector
-    from mysql.connector import pooling
-    MYSQL_AVAILABLE = True
-except ImportError:
-    try:
-        import pymysql
-        import pymysql.cursors
-        MYSQL_AVAILABLE = False
-        PYMySQL_AVAILABLE = True
-    except ImportError:
-        MYSQL_AVAILABLE = False
-        PYMySQL_AVAILABLE = False
-
 import streamlit as st
 import hashlib
 import pandas as pd
@@ -21,48 +7,47 @@ import json
 import re
 import os
 
-# --- Database Connection Pool ---
+# --- Database Connection Config ---
 DB_CONFIG = {
     'host': st.secrets["mysql"]["host"],
     'database': st.secrets["mysql"]["database"],
     'user': st.secrets["mysql"]["user"],
-    'password': st.secrets["mysql"]["password"],
-    'pool_name': 'ott_pool',
-    'pool_size': 5
+    'password': st.secrets["mysql"]["password"]
 }
 
-# Initialize connection pool based on available connector
-if MYSQL_AVAILABLE:
-    connection_pool = pooling.MySQLConnectionPool(**DB_CONFIG)
-elif PYMySQL_AVAILABLE:
-    connection_pool = None  # PyMySQL doesn't have built-in pooling, we'll handle connections manually
-else:
-    connection_pool = None
-    st.error("No MySQL connector available. Please install mysql-connector-python or PyMySQL.")
-
 def get_conn():
-    if MYSQL_AVAILABLE and connection_pool:
-        return connection_pool.get_connection()
-    elif PYMySQL_AVAILABLE:
+    # Try direct MySQL connection
+    try:
+        import mysql.connector
+        return mysql.connector.connect(
+            host=DB_CONFIG['host'],
+            user=DB_CONFIG['user'],
+            password=DB_CONFIG['password'],
+            database=DB_CONFIG['database']
+        )
+    except Exception as e:
+        print(f"⚠️  Direct mysql.connector connection failed: {e}")
+    # Try PyMySQL
+    try:
+        import pymysql
         return pymysql.connect(
             host=DB_CONFIG['host'],
             user=DB_CONFIG['user'],
             password=DB_CONFIG['password'],
             database=DB_CONFIG['database'],
-            charset='utf8mb4',
-            cursorclass=pymysql.cursors.DictCursor
+            charset='utf8mb4'
         )
-    else:
-        raise Exception("No database connector available")
+    except Exception as e:
+        print(f"⚠️  PyMySQL connection failed: {e}")
+    st.error("No MySQL connector available or database connection failed. Please check your credentials and install mysql-connector-python or PyMySQL.")
+    raise Exception("No database connector available")
 
 def get_cursor(conn):
-    """Get cursor with proper dictionary format for both connectors"""
-    if MYSQL_AVAILABLE:
+    # Try to get a dictionary cursor if possible
+    try:
         return conn.cursor(dictionary=True)
-    elif PYMySQL_AVAILABLE:
+    except Exception:
         return conn.cursor()
-    else:
-        raise Exception("No database connector available")
 
 # --- Table Creation (run once, or check/auto-create) ---
 CREATE_TABLES_SQL = [

@@ -1,4 +1,12 @@
 import streamlit as st
+
+# Configuration for mobile-friendly layout - MUST be the first Streamlit command
+st.set_page_config(
+    page_title="Movie Recommendation System",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
 from modules import database, recommender
 import pandas as pd
 import importlib.util
@@ -10,13 +18,6 @@ from decimal import Decimal
 import importlib
 import os
 from collections import Counter
-
-# Configuration for mobile-friendly layout
-st.set_page_config(
-    page_title="Movie Recommendation System",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
 
 # Custom CSS to hide the default Streamlit sidebar navigation
 # (Delete the block that sets [data-testid="stSidebarNav"] to display: none;)
